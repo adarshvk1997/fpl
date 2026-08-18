@@ -1,0 +1,21 @@
+name: FPL Advisor Cron
+
+# Runs every 20 minutes and hits the deployed app's cron-tick endpoint, which
+# derives all timing from the live FPL API (gameweek deadlines, finished/
+# data_checked flags) — nothing here hardcodes a schedule. This exists
+# because Vercel's free-tier Cron Jobs are capped at once/day, too coarse to
+# catch a T-2h-before-deadline window precisely.
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch: {} # allows a manual "Run workflow" click for testing
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call cron tick endpoint
+        run: |
+          curl --fail --silent --show-error \
+            -X POST "${{ secrets.APP_URL }}/api/cron/tick" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
