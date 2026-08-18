@@ -1,4 +1,5 @@
 import "server-only";
+import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getBootstrapStatic, getFixtures, getEntryEventPicks, getCurrentOrNextEvent } from "@/lib/fpl/client";
 import { generateSquadSuggestion } from "@/lib/ai/generateSquad";
@@ -43,21 +44,26 @@ export async function runGeneration(
 
   const chipsUsedThisSeason = (settings.chips_used ?? []).map((c) => c.chip);
 
-  const { suggestion } = await generateSquadSuggestion({
-    gameweek: event.id,
-    gameweekLabel: event.name,
-    trigger,
-    squad: {
-      playerIds,
-      bank,
-      freeTransfers,
-      activeChip: settings.active_chip,
-      chipsUsedThisSeason,
-      watchlistPlayerIds: settings.watchlist_player_ids ?? [],
-    },
-    bootstrap,
-    fixtures,
-  });
+  let suggestion;
+  try {
+    ({ suggestion } = await generateSquadSuggestion({
+      gameweek: event.id,
+      gameweekLabel: event.name,
+      trigger,
+      squad: {
+        playerIds,
+        bank,
+        freeTransfers,
+        activeChip: settings.active_chip,
+        chipsUsedThisSeason,
+        watchlistPlayerIds: settings.watchlist_player_ids ?? [],
+      },
+      bootstrap,
+      fixtures,
+    }));
+  } catch (err) {
+    throw new Error(describeAnthropicError(err), { cause: err });
+  }
 
   const snapshotId = await persistSquadSuggestion(supabase, {
     gameweek: event.id,
@@ -69,6 +75,25 @@ export async function runGeneration(
   });
 
   return { snapshotId, gameweek: event.id };
+}
+
+/** Turns the Anthropic SDK's raw error shapes into something a non-developer
+ *  can act on, instead of the raw HTTP status + JSON body. */
+function describeAnthropicError(err: unknown): string {
+  if (err instanceof Anthropic.AuthenticationError) {
+    return "AI generation failed: the Anthropic API key in .env.local is missing or invalid. " +
+      "Get a real key at console.anthropic.com/settings/keys and set ANTHROPIC_API_KEY.";
+  }
+  if (err instanceof Anthropic.PermissionDeniedError) {
+    return "AI generation failed: the Anthropic API key doesn't have permission for this — check your account's billing/plan.";
+  }
+  if (err instanceof Anthropic.RateLimitError) {
+    return "AI generation failed: rate-limited by Anthropic — wait a bit and try again.";
+  }
+  if (err instanceof Anthropic.APIError) {
+    return `AI generation failed: ${err.message}`;
+  }
+  return err instanceof Error ? err.message : "AI generation failed for an unknown reason.";
 }
 
 async function resolveCurrentSquad(

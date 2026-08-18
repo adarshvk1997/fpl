@@ -14,7 +14,10 @@ export default function OnboardingForms({ players }: { players: PickablePlayer[]
       <div className="flex gap-2 rounded-lg bg-neutral-900 p-1">
         <button
           type="button"
-          onClick={() => setMode("team-id")}
+          onClick={() => {
+            setMode("team-id");
+            setError(null);
+          }}
           className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition ${
             mode === "team-id" ? "bg-emerald-600 text-white" : "text-neutral-400 hover:text-neutral-200"
           }`}
@@ -23,7 +26,10 @@ export default function OnboardingForms({ players }: { players: PickablePlayer[]
         </button>
         <button
           type="button"
-          onClick={() => setMode("manual")}
+          onClick={() => {
+            setMode("manual");
+            setError(null);
+          }}
           className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition ${
             mode === "manual" ? "bg-emerald-600 text-white" : "text-neutral-400 hover:text-neutral-200"
           }`}

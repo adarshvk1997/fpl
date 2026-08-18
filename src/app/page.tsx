@@ -1,11 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 
-export default async function Home() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  redirect(user ? "/dashboard" : "/login");
+// No login gate in this deployment — always go straight to the dashboard.
+export default function Home() {
+  redirect("/dashboard");
 }

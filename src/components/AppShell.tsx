@@ -1,6 +1,5 @@
 import Link from "next/link";
 import CountdownTimer from "./CountdownTimer";
-import SignOutButton from "./SignOutButton";
 
 const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
@@ -36,7 +35,6 @@ export default function AppShell({
           {deadlineIso && gameweekLabel && (
             <CountdownTimer deadlineIso={deadlineIso} label={`${gameweekLabel} deadline`} />
           )}
-          <SignOutButton />
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>

@@ -35,7 +35,11 @@ export default async function TransfersPage() {
     <AppShell deadlineIso={event.deadline_time} gameweekLabel={event.name}>
       <h1 className="mb-6 text-2xl font-semibold text-white">Transfers — {event.name}</h1>
 
-      {!transfers?.length ? (
+      {!snapshot ? (
+        <p className="text-sm text-neutral-400">
+          No suggestion generated yet for this gameweek — head to the dashboard and hit refresh to run one.
+        </p>
+      ) : !transfers?.length ? (
         <p className="text-sm text-neutral-400">
           No transfers suggested for this gameweek — the AI likes your current squad as-is.
         </p>

@@ -1,20 +1,14 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { runGeneration } from "@/lib/orchestration/runGeneration";
 
 // Manual "Refresh" button — re-runs the AI analysis on demand with the
-// latest FPL data and news. Requires a signed-in session (enforced by
-// middleware for everything outside /login, but double-checked here since
-// this route has real cost attached to every call).
+// latest FPL data and news. No login is required in this deployment (see
+// the auth-removal note in git history), so this uses the admin client
+// directly rather than a session-based one — there's no user session to
+// read. Each call has real Anthropic API cost attached.
 export async function POST() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
+  const supabase = createAdminClient();
 
   try {
     const result = await runGeneration(supabase, "refresh");
