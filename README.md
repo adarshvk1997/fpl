@@ -19,7 +19,7 @@ magic-link login code is still in git history if you want it back later.)
 |---|---|
 | Frontend | Next.js 15 (App Router) + Tailwind, deployed on Vercel |
 | DB | Supabase Postgres, open row-level-security policies (no login, see above) |
-| AI | Gemini Flash (`gemini-2.5-flash`) via the Gemini API, with the Google Search grounding tool |
+| AI | Gemini Flash (`gemini-3.6-flash`) via the Gemini API, with the Google Search grounding tool |
 | FPL data | Official public FPL API — no key required |
 | Scheduling | GitHub Actions cron (every 20 min) — **not** Vercel Cron, whose free tier is capped at once/day |
 
