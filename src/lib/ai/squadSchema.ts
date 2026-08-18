@@ -30,7 +30,7 @@ const newsItemSchema = z.object({
 });
 
 /** The full shape a single AI generation run must return. Used both to build
- *  the structured-output schema sent to Claude and to validate the response. */
+ *  the structured-output schema sent to Gemini and to validate the response. */
 export const squadSuggestionSchema = z.object({
   starting_xi: z.array(squadSlotSchema).length(11),
   bench: z.array(squadSlotSchema).length(4),

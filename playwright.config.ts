@@ -8,9 +8,9 @@ import { defineConfig, devices } from "@playwright/test";
 //   - Settings tests back up and restore the app_settings row so your real
 //     configuration survives a test run.
 // What's intentionally NOT covered here: completing onboarding and letting
-// it kick off a real Claude generation. Automating that would either incur
-// real Anthropic API cost on every test run, or require mocking the AI
-// call — more infrastructure than a personal app warrants. That path was
+// it kick off a real Gemini generation. Automating that would either eat
+// into the free-tier rate limit on every test run, or require mocking the
+// AI call — more infrastructure than a personal app warrants. That path was
 // verified manually instead (see the QA notes in git history / README).
 export default defineConfig({
   testDir: "./e2e",

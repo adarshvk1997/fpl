@@ -1,6 +1,6 @@
 import "server-only";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { anthropic, AI_MODEL } from "./client";
+import { z } from "zod";
+import { genai, AI_MODEL } from "./client";
 import { squadSuggestionSchema, type SquadSuggestion } from "./squadSchema";
 import { researchCurrentNews } from "./research";
 import type { FplBootstrapStatic, FplFixture } from "@/lib/fpl/types";
@@ -33,13 +33,19 @@ export interface GenerateSquadParams {
 export interface GenerateSquadResult {
   suggestion: SquadSuggestion;
   usage: {
-    researchInputTokens: number;
-    researchOutputTokens: number;
     webSearchCount: number;
     squadInputTokens: number;
     squadOutputTokens: number;
   };
 }
+
+// Gemini's structured-output mode wants a plain JSON Schema, not a Zod
+// object directly — z.toJSONSchema() (built into Zod 4) does the
+// conversion. Only a subset of JSON Schema keywords are supported (see
+// ai.google.dev/gemini-api/docs/structured-output); this schema sticks to
+// basic object/array/string/number/enum/nullable shapes, all of which
+// translate cleanly.
+const squadSuggestionJsonSchema = z.toJSONSchema(squadSuggestionSchema);
 
 function playerLine(bootstrap: FplBootstrapStatic, fixtures: FplFixture[], gameweek: number, id: number): string {
   const p = findPlayer(bootstrap, id);
@@ -62,7 +68,7 @@ function playerLine(bootstrap: FplBootstrapStatic, fixtures: FplFixture[], gamew
 
 /**
  * The single most important call in the app: assembles official FPL data +
- * web-search-sourced news + season context into one prompt and asks Claude
+ * web-search-sourced news + season context into one prompt and asks Gemini
  * for a structured squad suggestion with a pundit-toned rationale. Runs at
  * most a few times per gameweek (gameweek open / manual refresh / T-2h
  * lock) — never per page load; callers cache the result in squad_snapshots.
@@ -99,56 +105,66 @@ export async function generateSquadSuggestion(
     lock: "This is the FINAL suggestion, being locked in automatically 2 hours before the deadline. Use the freshest data available; there will be no further review before the deadline.",
   };
 
-  const response = await anthropic.messages.parse({
+  const response = await genai.models.generateContent({
     model: AI_MODEL,
-    max_tokens: 8192,
-    system: SYSTEM_PROMPT,
-    output_config: { format: zodOutputFormat(squadSuggestionSchema) },
-    messages: [
-      {
-        role: "user",
-        content: [
-          `## ${gameweekLabel} — ${triggerContext[trigger]}`,
-          "",
-          "### Current 15-man squad",
-          squadLines,
-          "",
-          `Bank: ${squad.bank.toFixed(1)}m — Free transfers available: ${squad.freeTransfers}`,
-          squad.activeChip ? `Chip currently active this gameweek: ${squad.activeChip}` : "No chip currently played this gameweek.",
-          squad.chipsUsedThisSeason.length
-            ? `Chips already used this season: ${squad.chipsUsedThisSeason.join(", ")}`
-            : "No chips used yet this season.",
-          "",
-          watchlistLines ? `### Watchlist (players I'm tracking as transfer targets)\n${watchlistLines}` : "",
-          "",
-          "### Web research on current news (injuries, rotation, press conferences, lineup rumors)",
-          research.findings || "No notable news surfaced by search.",
-          "",
-          previousGameweekRecap ? `### How last gameweek actually went\n${previousGameweekRecap}` : "",
-          "",
-          "Give me your starting XI, bench order, captain and vice-captain, formation, predicted total points, " +
-            "any transfers you'd make (respecting free transfers — extra transfers cost 4 points each unless a " +
-            "chip is active), whether to consider a chip this week, and news items worth flagging. Weigh fixtures " +
-            "3-5 gameweeks ahead for any transfer, not just the next match.",
-        ]
-          .filter(Boolean)
-          .join("\n"),
-      },
-    ],
+    config: {
+      systemInstruction: SYSTEM_PROMPT,
+      responseMimeType: "application/json",
+      responseJsonSchema: squadSuggestionJsonSchema,
+    },
+    contents: [
+      `## ${gameweekLabel} — ${triggerContext[trigger]}`,
+      "",
+      "### Current 15-man squad",
+      squadLines,
+      "",
+      `Bank: ${squad.bank.toFixed(1)}m — Free transfers available: ${squad.freeTransfers}`,
+      squad.activeChip ? `Chip currently active this gameweek: ${squad.activeChip}` : "No chip currently played this gameweek.",
+      squad.chipsUsedThisSeason.length
+        ? `Chips already used this season: ${squad.chipsUsedThisSeason.join(", ")}`
+        : "No chips used yet this season.",
+      "",
+      watchlistLines ? `### Watchlist (players I'm tracking as transfer targets)\n${watchlistLines}` : "",
+      "",
+      "### Web research on current news (injuries, rotation, press conferences, lineup rumors)",
+      research.findings || "No notable news surfaced by search.",
+      "",
+      previousGameweekRecap ? `### How last gameweek actually went\n${previousGameweekRecap}` : "",
+      "",
+      "Give me your starting XI, bench order, captain and vice-captain, formation, predicted total points, " +
+        "any transfers you'd make (respecting free transfers — extra transfers cost 4 points each unless a " +
+        "chip is active), whether to consider a chip this week, and news items worth flagging. Weigh fixtures " +
+        "3-5 gameweeks ahead for any transfer, not just the next match.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
   });
 
-  if (!response.parsed_output) {
-    throw new Error("Claude did not return a parseable squad suggestion");
+  const rawText = response.text;
+  if (!rawText) {
+    throw new Error("Gemini did not return any output for the squad suggestion");
+  }
+
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(rawText);
+  } catch (err) {
+    throw new Error(
+      `Gemini's response wasn't valid JSON despite the structured-output schema: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
+  const validated = squadSuggestionSchema.safeParse(parsedJson);
+  if (!validated.success) {
+    throw new Error(`Gemini's response didn't match the expected squad schema: ${validated.error.message}`);
   }
 
   return {
-    suggestion: response.parsed_output,
+    suggestion: validated.data,
     usage: {
-      researchInputTokens: 0, // captured separately if needed later
-      researchOutputTokens: 0,
       webSearchCount: research.webSearchCount,
-      squadInputTokens: response.usage.input_tokens,
-      squadOutputTokens: response.usage.output_tokens,
+      squadInputTokens: response.usageMetadata?.promptTokenCount ?? 0,
+      squadOutputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
     },
   };
 }
@@ -169,4 +185,6 @@ technically available — chip suggestions are surfaced to the manager for confi
 
 Write the rationale summary the way a pundit writes a gameweek column: state the headline decisions and why, \
 in plain confident prose, not a bullet-pointed stats dump. Reference specific news when it drove a decision \
-(e.g. "...after his manager confirmed a knock in Friday's press conference").`;
+(e.g. "...after his manager confirmed a knock in Friday's press conference").
+
+Respond with JSON only, matching the given schema exactly.`;

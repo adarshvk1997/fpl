@@ -19,7 +19,7 @@ export interface CronTickSummary {
  * flags — nothing here hardcodes a day-of-week or kickoff schedule.
  *
  * Three independent checks per run, each idempotent (guarded by a DB lookup
- * before ever calling Claude), so a tick that fires slightly early/late or
+ * before ever calling the AI), so a tick that fires slightly early/late or
  * twice in a row never double-generates:
  *   1. A gameweek just opened and has no "draft" snapshot yet -> generate one.
  *   2. A gameweek has entered its T-2h window and has no "lock" snapshot yet

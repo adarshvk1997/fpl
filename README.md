@@ -2,7 +2,7 @@
 
 A personal Fantasy Premier League "pundit" — an AI that reviews your squad every gameweek, suggests
 transfers, captains, and chip usage with a written rationale, and tracks how its picks actually
-performed. Built to run on free tiers plus a few dollars a year of Claude API usage.
+performed. Built to run entirely on free tiers, including AI usage (Gemini Flash's free tier).
 
 **This app never touches your real FPL team.** It reads your squad from the public FPL API (or a
 manual entry), records its own suggestions, and lets you compare/apply them yourself on the official
@@ -10,8 +10,8 @@ FPL site. There is no official public "submit transfer" endpoint, and this app d
 reverse-engineer one.
 
 **No login.** This deployment has no auth gate — anyone with the URL can view/use it and trigger AI
-generations (small $ cost each). Fine for a private, unlisted personal deployment; don't post the link
-publicly. (The magic-link login code is still in git history if you want it back later.)
+generations. Fine for a private, unlisted personal deployment; don't post the link publicly. (The
+magic-link login code is still in git history if you want it back later.)
 
 ## Stack
 
@@ -19,7 +19,7 @@ publicly. (The magic-link login code is still in git history if you want it back
 |---|---|
 | Frontend | Next.js 15 (App Router) + Tailwind, deployed on Vercel |
 | DB | Supabase Postgres, open row-level-security policies (no login, see above) |
-| AI | Claude Sonnet 5 (`claude-sonnet-5`) via the Anthropic API, with the `web_search` server tool |
+| AI | Gemini Flash (`gemini-2.5-flash`) via the Gemini API, with the Google Search grounding tool |
 | FPL data | Official public FPL API — no key required |
 | Scheduling | GitHub Actions cron (every 20 min) — **not** Vercel Cron, whose free tier is capped at once/day |
 
@@ -45,11 +45,11 @@ that the check isn't running exactly on the second.
 3. Copy your Project URL, anon key, and service role key into `.env.local` (see `.env.example`) from
    **Settings → API**.
 
-### 2. Anthropic
+### 2. Gemini
 
-1. Get an API key at [console.anthropic.com](https://console.anthropic.com) — this requires adding a
-   payment method; there's no free tier for API usage (see cost estimate below).
-2. Set `ANTHROPIC_API_KEY`.
+1. Get a free API key at [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) —
+   no payment method required (see cost estimate below).
+2. Set `GEMINI_API_KEY`.
 
 ### 3. Local development
 
@@ -93,8 +93,8 @@ deliberately scoped to stay safe to run anytime:
 - **Onboarding tests** only exercise validation paths (bad team ID, wrong player count) that fail
   before any database write or AI call.
 - **Settings tests** back up and restore the `app_settings` row around each test.
-- **Not covered by e2e**: actually completing onboarding and letting it kick off a real Claude
-  generation. Automating that would either cost real Anthropic API money on every test run, or
+- **Not covered by e2e**: actually completing onboarding and letting it kick off a real Gemini
+  generation. Automating that would either eat into the free-tier rate limit on every test run, or
   require mocking the AI call — more infrastructure than this app warrants. That path is best
   verified by hand once in a while (sign up, click through, confirm a real suggestion appears).
 
@@ -103,28 +103,26 @@ If you already have `npm run dev` running in another terminal, Playwright reuses
 
 ## How the AI calls are budgeted
 
-Claude is called at most a handful of times per gameweek, never per page load:
+Gemini is called at most a handful of times per gameweek, never per page load:
 
 1. **Gameweek opens** → one generation (`draft`), picked up by the cron tick.
 2. **You hit "Refresh"** → one generation (`refresh`) — rate this yourself by how often you click it.
 3. **T-2h before deadline** → one generation (`lock`), the permanent record for that gameweek.
 4. **After a gameweek finishes** → one short post-mortem call (no web search, ~1K tokens).
 
-Each generation is itself two Claude calls internally (a scoped web-search research pass, then a
+Each generation is itself two Gemini calls internally (a scoped web-search research pass, then a
 structured-output squad-generation pass) — never more, regardless of squad size.
 
-### Cost estimate (not literally $0)
+### Cost estimate (should be $0)
 
-Using Claude Sonnet 5 pricing (~$2–3 / $10–15 per million input/output tokens) and web search at
-$10 per 1,000 searches:
-
-- Per generation: ~5K input + ~2K output tokens + ~4 web searches ≈ **$0.06–0.08**
-- 3 generations/gameweek × 38 gameweeks ≈ **$7–9/season**
-- Even with heavy manual refreshing, realistically **under $20/season**
+Gemini Flash has a genuinely free tier (rate-limited, not a trial credit) — no payment method needed
+to get a key at all. At this app's real usage pattern (a handful of generations per gameweek, not per
+page load), normal use should stay comfortably inside the free tier's request-per-day and
+request-per-minute limits for the whole season. If you ever did exceed it, Flash's paid pricing is
+low enough (well under $1/million tokens) that even heavy refreshing would cost pennies, not dollars.
 
 Supabase, Vercel, and GitHub Actions all stay within their free tiers for a single-user app at this
-volume. The only recurring cost is a small Anthropic API balance (Anthropic requires a payment method
-on file to issue an API key at all — there's no free tier for API usage).
+volume too, so the realistic total recurring cost for this app is **$0**.
 
 ## Project structure
 
@@ -142,7 +140,7 @@ src/
     login/, auth/          unused — magic-link auth code, kept in case login is re-added later
   lib/
     fpl/                   typed public FPL API client + fixture/deadline analysis
-    ai/                    Claude client, research pass, structured squad generation, post-mortem
+    ai/                    Gemini client, research pass, structured squad generation, post-mortem
     orchestration/         ties FPL data + AI + persistence together for each trigger
     supabase/              browser/server/admin Supabase clients
     types/database.ts      hand-written DB types (regenerate via Supabase CLI once linked)

@@ -6,7 +6,7 @@ import { runGeneration } from "@/lib/orchestration/runGeneration";
 // latest FPL data and news. No login is required in this deployment (see
 // the auth-removal note in git history), so this uses the admin client
 // directly rather than a session-based one — there's no user session to
-// read. Each call has real Anthropic API cost attached.
+// read. Each call hits the Gemini API (Flash tier, free-tier-friendly).
 export async function POST() {
   const supabase = createAdminClient();
 

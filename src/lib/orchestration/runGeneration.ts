@@ -1,5 +1,5 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
+import { ApiError } from "@google/genai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getBootstrapStatic, getFixtures, getEntryEventPicks, getCurrentOrNextEvent } from "@/lib/fpl/client";
 import { generateSquadSuggestion } from "@/lib/ai/generateSquad";
@@ -13,7 +13,7 @@ export interface RunGenerationResult {
 
 /**
  * End-to-end: load settings + current squad (from FPL if a team ID is on
- * file, else the manually-entered squad) + FPL reference data, call Claude,
+ * file, else the manually-entered squad) + FPL reference data, call Gemini,
  * persist the result. This is the one function every trigger path — manual
  * refresh, the gameweek-open cron, and the T-2h lock cron — calls, so the
  * "only a handful of AI calls per gameweek" budget is enforced by callers
@@ -62,7 +62,7 @@ export async function runGeneration(
       fixtures,
     }));
   } catch (err) {
-    throw new Error(describeAnthropicError(err), { cause: err });
+    throw new Error(describeGeminiError(err), { cause: err });
   }
 
   const snapshotId = await persistSquadSuggestion(supabase, {
@@ -77,20 +77,19 @@ export async function runGeneration(
   return { snapshotId, gameweek: event.id };
 }
 
-/** Turns the Anthropic SDK's raw error shapes into something a non-developer
- *  can act on, instead of the raw HTTP status + JSON body. */
-function describeAnthropicError(err: unknown): string {
-  if (err instanceof Anthropic.AuthenticationError) {
-    return "AI generation failed: the Anthropic API key in .env.local is missing or invalid. " +
-      "Get a real key at console.anthropic.com/settings/keys and set ANTHROPIC_API_KEY.";
-  }
-  if (err instanceof Anthropic.PermissionDeniedError) {
-    return "AI generation failed: the Anthropic API key doesn't have permission for this — check your account's billing/plan.";
-  }
-  if (err instanceof Anthropic.RateLimitError) {
-    return "AI generation failed: rate-limited by Anthropic — wait a bit and try again.";
-  }
-  if (err instanceof Anthropic.APIError) {
+/** Turns the Gemini SDK's raw error shapes into something a non-developer
+ *  can act on, instead of the raw HTTP status + JSON body. Unlike the
+ *  Anthropic SDK, @google/genai has one ApiError class (status: number)
+ *  rather than a distinct subclass per status code, so branch on status. */
+function describeGeminiError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 401 || err.status === 403) {
+      return "AI generation failed: the Gemini API key in .env.local is missing or invalid. " +
+        "Get a free key at aistudio.google.com/app/apikey (no billing account required) and set GEMINI_API_KEY.";
+    }
+    if (err.status === 429) {
+      return "AI generation failed: rate-limited by Gemini — wait a bit and try again (this can happen on the free tier).";
+    }
     return `AI generation failed: ${err.message}`;
   }
   return err instanceof Error ? err.message : "AI generation failed for an unknown reason.";

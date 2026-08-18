@@ -1,9 +1,10 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI } from "@google/genai";
 
-export const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+export const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Sonnet 5 is the right cost/quality point for this app: strong enough for
-// nuanced squad reasoning and pundit-style writing, cheap enough that even
-// several generations per gameweek stay in the pennies-per-month range.
-export const AI_MODEL = "claude-sonnet-5";
+// Flash tier: cheap enough that even exceeding the free tier stays pennies,
+// and the free tier itself (rate-limited, not "$0 forever unlimited") easily
+// covers this app's real usage pattern — a handful of generations per
+// gameweek, not per page load. See README for the cost breakdown.
+export const AI_MODEL = "gemini-2.5-flash";
